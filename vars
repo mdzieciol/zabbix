@@ -1,0 +1,5 @@
+DBName: zabbixdb
+DBUser: zabbix
+DBPassword: password
+timezone: Europe/Warsaw
+zabbix_server: 192.168.100.100

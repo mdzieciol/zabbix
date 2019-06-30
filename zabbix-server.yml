@@ -1,0 +1,108 @@
+---
+  - hosts: zabbix_server
+    tasks:
+
+    - name: Include vars
+      include_vars:
+        file: vars
+
+    - name: Download deb
+      get_url:
+        url: http://repo.zabbix.com/zabbix/4.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_4.0-1%2Bbionic_all.deb
+        dest: /tmp/
+
+    - name: Install deb from /tmp/
+      apt: deb="/tmp/zabbix-release_4.0-1%2Bbionic_all.deb"
+
+    - name: apt-get update
+      apt:
+        update_cache: yes
+
+    - pause:
+        seconds: 5
+
+    - name: Installing package
+      apt:
+        name:
+        - zabbix-agent
+        - zabbix-server-mysql
+        - zabbix-frontend-php
+        - python-pip
+
+    - name: install PyMySQL
+      pip:
+        name: PyMySQL
+
+    - name: Create a new database
+      mysql_db:
+        name: "{{ DBName }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        encoding: utf8
+        collation: utf8_bin
+        state: present
+
+    - name: Create database user
+      mysql_user:
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        name: "{{ DBUser }}"
+        password: "{{ DBPassword }}"
+        priv: '{{ DBName }}.*:ALL'
+        state: present
+
+    - name: Uncompress schema
+      shell: gunzip /usr/share/doc/zabbix-server-mysql/create.sql.gz
+
+    - name: Import DB schema
+      mysql_db:
+        name: "{{ DBName }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        state: import
+        target: /usr/share/doc/zabbix-server-mysql/create.sql
+
+    - name: Add Zabbix DBName
+      replace:
+        path: /etc/zabbix/zabbix_server.conf
+        regexp: ^DBName=zabbix
+        replace: "DBName={{ DBName }}"
+
+    - name: Add Zabbix DBUser
+      replace:
+        path: /etc/zabbix/zabbix_server.conf
+        regexp: ^DBUser=zabbix
+        replace: "DBUser={{ DBUser }}"
+
+    - name: Add Zabbix DBPassword
+      replace:
+        path: /etc/zabbix/zabbix_server.conf
+        regexp: ^#\ DBPassword=
+        replace: "DBPassword={{ DBPassword }}"
+
+    - name: Add timezone to php config
+      replace:
+        path: /etc/apache2/conf-available/zabbix.conf
+        regexp: \#\ php_value\ date.timezone\ Europe/Riga
+        replace: "php_value date.timezone {{ timezone }}"
+
+    - name: Enable config in apache2
+      file:
+        src: /etc/apache2/conf-available/zabbix.conf
+        dest: /etc/apache2/conf-enabled/zabbix.conf
+        state: link
+
+    - name: restart service apache2
+      systemd:
+        state: restarted
+        name: apache2.service
+        enabled: yes
+
+    - name: restart service server
+      systemd:
+        state: restarted
+        name: zabbix-agent.service
+        enabled: yes
+
+    - name: restart service agent
+      systemd:
+        state: restarted
+        name: zabbix-server.service
+        enabled: yes
